@@ -1,10 +1,14 @@
 "use client";
 
 import { useCallback, useRef, useState, type ReactNode } from "react";
-import { useDropzone } from "react-dropzone";
+import { useDropzone, type FileRejection } from "react-dropzone";
 import { Upload, FileAudio, Loader2, ArrowLeft } from "lucide-react";
 
 type Stage = "idle" | "transcribing" | "summarizing" | "done" | "error";
+
+const MAX_UPLOAD_MB = Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB) || 0;
+const MAX_UPLOAD_BYTES =
+  MAX_UPLOAD_MB > 0 ? MAX_UPLOAD_MB * 1024 * 1024 : undefined;
 
 function LoadingState({ label }: { label: string }) {
   return (
@@ -43,7 +47,19 @@ export function UploadBox() {
 
     if (!uploadedFile) return;
 
+    setError("");
     setFile(uploadedFile);
+  }, []);
+
+  const onDropRejected = useCallback((rejections: FileRejection[]) => {
+    const tooLarge = rejections.some((r) =>
+      r.errors.some((e) => e.code === "file-too-large"),
+    );
+    setError(
+      tooLarge
+        ? `File terlalu besar. Maksimal ${MAX_UPLOAD_MB} MB.`
+        : "File tidak didukung.",
+    );
   }, []);
 
   const handleTranscribe = async () => {
@@ -122,9 +138,11 @@ export function UploadBox() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
+    onDropRejected,
     accept: {
       "audio/*": [".mp3", ".wav", ".m4a"],
     },
+    maxSize: MAX_UPLOAD_BYTES,
     multiple: false,
   });
 
@@ -179,6 +197,7 @@ export function UploadBox() {
 
                   <p className="text-sm text-zinc-500">
                     Supports MP3, WAV, and M4A
+                    {MAX_UPLOAD_MB > 0 ? ` · max ${MAX_UPLOAD_MB}MB` : ""}
                   </p>
                 </>
               )}
@@ -193,6 +212,8 @@ export function UploadBox() {
               Generate Transcript
             </button>
           )}
+
+          {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
       </div>
     );

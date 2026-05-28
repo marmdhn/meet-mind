@@ -8,13 +8,6 @@ import { randomUUID } from "node:crypto";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// Re-encode to clean 16kHz mono Opus before sending to Deepgram, because:
-//  - low-bitrate AAC made Deepgram silently drop the tail of long recordings;
-//  - dynaudnorm lifts quiet speakers that were otherwise missed;
-//  - apad adds trailing silence so Deepgram doesn't drop speech that sits right
-//    at the end boundary of a long file.
-// Returns null if ffmpeg isn't available (e.g. serverless host) so the caller
-// can fall back to the original audio.
 function preprocessAudio(input: Buffer): Promise<Buffer | null> {
   return (async () => {
     const tmpIn = join(tmpdir(), `meetmind-${randomUUID()}`);

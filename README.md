@@ -51,11 +51,15 @@ npm install
 npm run dev
 ```
 
-Create a `.env` file:
+Create a `.env` file (see `.env.example`):
 
 ```bash
 DEEPGRAM_API_KEY=your_deepgram_key
 OPENROUTER_API_KEY=your_openrouter_key
+
+# Optional: cap upload size (MB). Unset locally = no limit.
+# On Vercel, set to ~4 to respect the ~4.5MB serverless body limit.
+# NEXT_PUBLIC_MAX_UPLOAD_MB=4
 ```
 
 ### Full quality (local) requires ffmpeg
