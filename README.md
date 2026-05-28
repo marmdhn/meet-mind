@@ -1,36 +1,70 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MeetMind
 
-## Getting Started
+AI meeting assistant — upload meeting audio and get a **speaker-separated transcript** plus an **AI summary** (ringkasan, poin per pembicara, action items, keputusan) in Bahasa Indonesia.
 
-First, run the development server:
+## Tech stack
+
+- **Framework:** Next.js 16 (App Router), React 19, Tailwind CSS v4
+- **Transcription (speech-to-text):** [Deepgram](https://deepgram.com) `nova-3` — diarization + utterances + smart formatting, `language=id`
+- **Summarization (LLM):** [OpenRouter](https://openrouter.ai) with a fallback chain of free models (`openai/gpt-oss-120b` → `qwen/qwen3-next-80b` → `meta-llama/llama-3.3-70b`) so a rate-limited model rolls over to the next
+- **Audio preprocessing:** ffmpeg (used when available — see below)
+- **Upload UI:** react-dropzone
+
+## How it works
+
+1. User uploads meeting audio (`.mp3` / `.wav` / `.m4a`).
+2. `POST /api/transcribe`:
+   - if ffmpeg is available, the audio is **preprocessed** first (see below);
+   - audio is sent to Deepgram, which returns words/utterances tagged with a speaker number;
+   - the response is formatted into `Pembicara 1: …`, `Pembicara 2: …`, etc.
+3. `POST /api/summarize`: the speaker-labelled transcript is sent to an OpenRouter model, which returns a Markdown summary (Ringkasan, Poin per Pembicara, Action Items, Keputusan Penting).
+
+### Audio preprocessing (why it matters)
+
+Low-bitrate / quiet recordings made Deepgram **silently drop speech** — quiet speakers and the tail end of long files. Before sending to Deepgram, the route runs ffmpeg:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+ffmpeg -i <input> -af "dynaudnorm=f=150:g=15,apad=pad_dur=10" \
+  -ac 1 -ar 16000 -c:a libopus -b:a 32k -f ogg pipe:1
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **Re-encode to clean 16 kHz mono Opus** — fixes the codec-decode quirk that dropped the tail of long recordings.
+- **`dynaudnorm`** — dynamic loudness normalization; lifts quiet speakers so they aren't missed.
+- **`apad` (trailing silence)** — Deepgram tends to drop speech sitting right at the end of a long file; padding pushes the real audio off that boundary.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+If ffmpeg is **not** found, the route falls back to sending the original audio unchanged — so it never crashes, it just skips the enhancement.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Local vs. hosting (Vercel)
 
-## Learn More
+| | Local (full quality) | Vercel (serverless) |
+|---|---|---|
+| ffmpeg preprocessing | ✅ runs — better accuracy, no dropped speech | ❌ no ffmpeg → falls back to original audio |
+| Upload size | large meetings OK | ⚠️ ~4.5 MB request-body limit → short clips only |
+| Function timeout | none | ⚠️ up to 60s (Hobby) → long files may time out |
 
-To learn more about Next.js, take a look at the following resources:
+The app **runs on Vercel and won't crash** (it degrades gracefully), but only for short clips and without audio enhancement. For full quality on long meetings, run it **locally** — or deploy to a non-serverless host (Railway / Render / Fly / VPS) where ffmpeg and long processing work.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Getting started
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm install
+npm run dev
+```
 
-## Deploy on Vercel
+Create a `.env` file:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+DEEPGRAM_API_KEY=your_deepgram_key
+OPENROUTER_API_KEY=your_openrouter_key
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Full quality (local) requires ffmpeg
+
+```bash
+# macOS
+brew install ffmpeg
+```
+
+### Accessing the dev server from another device
+
+`next.config.ts` sets `allowedDevOrigins`. Update the IP there to match your machine if it changes.
