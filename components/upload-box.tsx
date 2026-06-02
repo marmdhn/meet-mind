@@ -6,6 +6,21 @@ import { Upload, FileAudio, Loader2, ArrowLeft, Download } from "lucide-react";
 
 type Stage = "idle" | "transcribing" | "summarizing" | "done" | "error";
 
+async function requestJson(
+  input: string,
+  init: RequestInit,
+  fallbackError: string,
+) {
+  const response = await fetch(input, init);
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || fallbackError);
+  }
+
+  return data;
+}
+
 function buildCombinedText(name: string, transcript: string, summary: string) {
   const divider = "=".repeat(60);
   const sections = [
@@ -131,39 +146,27 @@ export function UploadBox() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch("/api/transcribe", {
-        method: "POST",
-        body: formData,
-        signal,
-      });
-
-      const data = await response.json();
+      const data = await requestJson(
+        "/api/transcribe",
+        { method: "POST", body: formData, signal },
+        "Gagal mentranskrip audio",
+      );
       if (signal.aborted) return;
-
-      if (!response.ok) {
-        throw new Error(data.error || "Gagal mentranskrip audio");
-      }
 
       setTranscript(data.transcript);
       setStage("summarizing");
 
-      const summarizeResponse = await fetch("/api/summarize", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const summaryData = await requestJson(
+        "/api/summarize",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcript: data.transcript }),
+          signal,
         },
-        body: JSON.stringify({
-          transcript: data.transcript,
-        }),
-        signal,
-      });
-
-      const summaryData = await summarizeResponse.json();
+        "Gagal membuat ringkasan",
+      );
       if (signal.aborted) return;
-
-      if (!summarizeResponse.ok) {
-        throw new Error(summaryData.error || "Gagal membuat ringkasan");
-      }
 
       setResult(summaryData.result);
       setStage("done");
