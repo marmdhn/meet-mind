@@ -2,9 +2,44 @@
 
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useDropzone, type FileRejection } from "react-dropzone";
-import { Upload, FileAudio, Loader2, ArrowLeft } from "lucide-react";
+import { Upload, FileAudio, Loader2, ArrowLeft, Download } from "lucide-react";
 
 type Stage = "idle" | "transcribing" | "summarizing" | "done" | "error";
+
+function buildCombinedText(name: string, transcript: string, summary: string) {
+  const divider = "=".repeat(60);
+  const sections = [
+    divider,
+    `  MEETMIND — ${name}`,
+    divider,
+    "",
+    "TRANSCRIPT",
+    "-".repeat(60),
+    "",
+    transcript.trim() || "(tidak ada transkrip)",
+    "",
+    "",
+    "AI SUMMARY",
+    "-".repeat(60),
+    "",
+    summary.trim() || "(tidak ada ringkasan)",
+    "",
+  ];
+
+  return sections.join("\n");
+}
+
+function downloadText(filename: string, text: string) {
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 
 const MAX_UPLOAD_MB = Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB) || 0;
 const MAX_UPLOAD_BYTES =
@@ -21,16 +56,34 @@ function LoadingState({ label }: { label: string }) {
 
 function ResultBox({
   title,
+  action,
   children,
 }: {
   title: string;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
-      <h2 className="mb-4 text-lg font-semibold">{title}</h2>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold">{title}</h2>
+        {action}
+      </div>
       <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
     </div>
+  );
+}
+
+function DownloadButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title="Download sebagai .txt"
+      className="flex items-center gap-1.5 rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800 hover:text-white"
+    >
+      <Download className="h-3.5 w-3.5" />
+      .txt
+    </button>
   );
 }
 
@@ -125,6 +178,8 @@ export function UploadBox() {
       }
     }
   };
+
+  const baseName = file?.name.replace(/\.[^/.]+$/, "").trim() || "meetmind";
 
   const handleBack = () => {
     abortRef.current?.abort();
@@ -223,16 +278,44 @@ export function UploadBox() {
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <button
-        onClick={handleBack}
-        className="flex w-fit items-center gap-2 text-sm text-zinc-400 transition hover:text-white"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Upload audio lain
-      </button>
+      <div className="flex items-center justify-between gap-2">
+        <button
+          onClick={handleBack}
+          className="flex w-fit items-center gap-2 text-sm text-zinc-400 transition hover:text-white"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Upload audio lain
+        </button>
+
+        {transcript && result && (
+          <button
+            onClick={() =>
+              downloadText(
+                `${baseName}.txt`,
+                buildCombinedText(baseName, transcript, result),
+              )
+            }
+            className="flex items-center gap-2 rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-black transition hover:bg-zinc-200"
+          >
+            <Download className="h-4 w-4" />
+            Download semua (.txt)
+          </button>
+        )}
+      </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row">
-        <ResultBox title="Transcript">
+        <ResultBox
+          title="Transcript"
+          action={
+            transcript ? (
+              <DownloadButton
+                onClick={() =>
+                  downloadText(`${baseName}-transcript.txt`, transcript)
+                }
+              />
+            ) : undefined
+          }
+        >
           {transcript ? (
             <p className="whitespace-pre-wrap leading-7 text-zinc-300">
               {transcript}
@@ -244,7 +327,18 @@ export function UploadBox() {
           )}
         </ResultBox>
 
-        <ResultBox title="AI Summary">
+        <ResultBox
+          title="AI Summary"
+          action={
+            result ? (
+              <DownloadButton
+                onClick={() =>
+                  downloadText(`${baseName}-summary.txt`, result)
+                }
+              />
+            ) : undefined
+          }
+        >
           {result ? (
             <pre className="whitespace-pre-wrap text-sm leading-7 text-zinc-300">
               {result}
